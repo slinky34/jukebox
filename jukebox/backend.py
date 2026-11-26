@@ -415,6 +415,8 @@ class DemoBackend(BaseBackend):
             self.add_personal("1", "Chill Evenings", keys[14:22])
             self.add_personal("1", "Recently Played", keys[40:50], smart=True)
             self.add_personal("2", "Sam's Faves", keys[3:60:9])
+            for mid in ("2", "3", "4"):  # left behind by a deleted playlist: try the clean-up
+                self.add_personal(mid, "👥 Test123", keys[30:33])
 
     def members(self, refresh=False):
         return self._members

@@ -96,9 +96,19 @@ docker compose run --rm --no-deps --user root -v "${PWD}/data:/old" jukebox sh -
 ```
 then `docker compose up -d`.
 
-The server owner can also run the same search any time from the web page: **+** >
-**…or bring back shared playlists from an earlier install**. It only adds playlists that
-aren't there yet.
+### Cleaning up 👥 playlists (server owner)
+
+**+** > **…or clean up 👥 playlists** shows:
+
+- **Leftovers**: `👥` playlists in people's Plex that Jukebox isn't keeping in sync, for
+  example from a playlist deleted while Jukebox was down or running twice. **Delete**
+  removes every copy from everyone's Plex. **Bring back** makes it a shared playlist again.
+  If someone's Plex doesn't answer, run Delete again later for their copy.
+- **Shared playlists you're not in**, such as ones rebuilt from other people's copies.
+  **Join** one to see and edit it, or **Delete** it for everyone.
+
+Shared playlists Jukebox manages, and anyone's own playlists, are never touched by the
+leftover clean-up.
 
 ### Running it on a different machine than Plex
 

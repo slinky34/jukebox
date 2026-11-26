@@ -302,6 +302,44 @@ class SyncTest(unittest.TestCase):
         self.db.delete_playlist(self.pid)
         self.assertEqual(self.sync.recover(), [])
 
+    def test_leftovers_can_be_deleted_everywhere(self):
+        k = self.keys
+        self.add(k[:3])
+        self.sync.run_once()
+        # "Test123" was deleted while records were lost: copies stay in everyone's Plex.
+        for mid in ("1", "2", "3"):
+            self.b.add_personal(mid, "👥 Test123", k[5:7])
+        self.b.add_personal("2", "👥 Test123", k[5:6])   # a duplicate copy too
+        self.b.add_personal("2", "👥 Road Trip", k[:1])  # stray extra copy of a live playlist
+        mine = self.b.add_personal("3", "Riley's own", k[:2])
+
+        left = {l["name"]: l for l in self.sync.leftovers()}
+        self.assertEqual(set(left), {"Test123", "Road Trip"})
+        self.assertEqual(left["Test123"]["copies"], 4)
+        self.assertEqual(len(left["Test123"]["people"]), 3)
+        self.assertFalse(left["Test123"]["in_jukebox"])
+        self.assertTrue(left["Road Trip"]["in_jukebox"])
+
+        self.b.fail.add("3")
+        self.assertEqual(self.sync.delete_leftovers("Test123"), (3, 1))  # Riley didn't answer
+        self.b.fail.clear()
+        self.assertEqual(self.sync.delete_leftovers("Test123"), (1, 0))
+        for m in self.b.members():
+            self.assertFalse(any(p["title"] == "👥 Test123" for p in self.b.plex[m.id].values()), m.title)
+
+        self.assertEqual(self.sync.delete_leftovers("Road Trip"), (1, 0))
+        self.sync.run_once()
+        self.assert_everyone(k[:3])  # the real shared copies are untouched
+        self.assertIn(mine, self.b.plex["3"])
+        self.assertEqual(self.sync.leftovers(), [])
+
+    def test_bring_back_one_leftover(self):
+        k = self.keys
+        self.b.add_personal("1", "👥 Old", k[1:3])
+        self.b.add_personal("1", "👥 Other", k[4:5])
+        self.assertEqual(self.sync.recover(names={"Old"}), ["Old"])
+        self.assertEqual([l["name"] for l in self.sync.leftovers()], ["Other"])
+
     def test_importing_an_old_copy_drops_the_prefix(self):
         key = self.b.add_personal("1", "👥 Old Times", self.keys[:2])
         pid, _, _ = self.sync.import_playlist(self._owner(), key)

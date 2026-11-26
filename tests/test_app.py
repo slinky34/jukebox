@@ -64,9 +64,32 @@ class AppSecurityTest(unittest.TestCase):
         self.assertNotIn("<script>", r.text.replace('<script src="/static/app.js"></script>', ""))
         self.assertNotIn("onclick=", r.text)
 
-    def test_only_the_owner_can_recover(self):
-        self.assertEqual(self.client("2").post("/api/recover").status_code, 403)
-        self.assertEqual(self.client("1").post("/api/recover").status_code, 200)
+    def test_only_the_owner_can_recover_or_clean_up(self):
+        sam, owner = self.client("2"), self.client("1")
+        self.assertEqual(sam.post("/api/recover").status_code, 403)
+        self.assertEqual(sam.get("/api/leftovers").status_code, 403)
+        self.assertEqual(sam.post("/api/leftovers/delete", json={"name": "x"}).status_code, 403)
+        self.assertEqual(sam.post("/api/leftovers/restore", json={"name": "x"}).status_code, 403)
+        self.assertEqual(owner.post("/api/recover").status_code, 200)
+        self.backend.add_personal("2", "👥 Test123", list(self.backend.library)[:2])
+        self.assertEqual([l["name"] for l in owner.get("/api/leftovers").json()], ["Test123"])
+        self.assertEqual(owner.post("/api/leftovers/delete", json={"name": "Test123"}).json(),
+                         {"deleted": 1, "queued": 0})
+        self.assertEqual(owner.get("/api/leftovers").json(), [])
+
+    def test_owner_can_see_join_and_delete_playlists_they_are_not_in(self):
+        sam, owner = self.client("2"), self.client("1")
+        pid = sam.post("/api/playlists", json={"name": "Test123"}).json()["id"]
+        self.assertEqual(sam.get("/api/others").status_code, 403)
+        self.assertEqual(sam.delete(f"/api/others/{pid}").status_code, 403)
+        self.assertEqual([p["name"] for p in owner.get("/api/others").json()], ["Test123"])
+        self.assertEqual(owner.post(f"/api/others/{pid}/join").status_code, 200)
+        self.assertEqual(self.db.member_ids(pid), {"1", "2"})
+        self.assertEqual(owner.get("/api/others").json(), [])
+        pid2 = sam.post("/api/playlists", json={"name": "Gone"}).json()["id"]
+        self.assertEqual(owner.delete(f"/api/others/{pid2}").status_code, 200)
+        self.assertIsNone(self.db.get_playlist(pid2))
+        self.assertEqual(owner.delete(f"/api/others/{pid2}").status_code, 404)
 
     def test_bad_keys_never_reach_plex(self):
         c = self.client("2")

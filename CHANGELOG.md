@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 - 2026-11-25
+
+- **Clean up 👥 playlists (server owner).** Under **+ > …or clean up 👥 playlists**:
+  - **Leftovers:** 👥 playlists still in people's Plex that Jukebox isn't keeping in
+    sync, for example one deleted while two copies of Jukebox were running. **Delete**
+    removes every copy from everyone's Plex; **Bring back** turns it into a shared
+    playlist again. Your own playlists and the shared playlists Jukebox manages are never
+    touched.
+  - **Shared playlists you're not in**, such as ones rebuilt from other people's copies.
+    **Join** to see and edit one, or **Delete** it for everyone.
+
 ## 0.1.0 - 2026-11-25
 
 First published release, now as a Docker image: `ghcr.io/slinky34/jukebox`.

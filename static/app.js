@@ -166,6 +166,7 @@ $("empty-new").onclick = () => $("new-pl").click();
 $("new-pl").onclick = () => {
   $("new-box").hidden = !$("new-box").hidden;
   $("import-box").hidden = true;
+  $("leftover-box").hidden = true;
   if (!$("new-box").hidden) $("new-name").focus();
 };
 async function openNew(id) {
@@ -211,20 +212,87 @@ $("show-import").onclick = async () => {
     : `<div class="none">You don't have any music playlists in Plex yet.</div>`;
 };
 
-$("recover").onclick = async () => {
-  const b = $("recover");
-  b.disabled = true;
-  b.textContent = "Looking through everyone's Plex…";
-  try {
-    const r = await api("/api/recover", { method: "POST" });
-    toast(r.names.length
-      ? `Brought back ${plural(r.names.length, "playlist")}: ${esc(r.names.join(", "))}`
-      : "Didn't find any shared playlists that aren't already here.");
-    await loadPlaylists();
-  } catch (_) { /* api() already showed the error */ }
-  b.disabled = false;
-  b.textContent = "…or bring back shared playlists from an earlier install";
+async function loadLeftovers() {
+  const list = $("leftover-list");
+  list.innerHTML = `<div class="none">Looking through everyone's Plex…</div>`;
+  let items;
+  try { items = await api("/api/leftovers"); }
+  catch (_) { list.innerHTML = `<div class="none">Couldn't check everyone's Plex.</div>`; return; }
+  list.innerHTML = items.length ? items.map((l) => {
+    const who = l.people.length > 3 ? `${l.people.slice(0, 3).join(", ")} +${l.people.length - 3}` : l.people.join(", ");
+    return `
+    <div class="import-item leftover" title="In the Plex of: ${esc(l.people.join(", "))}">
+      <div><div class="t">👥 ${esc(l.name)}</div>
+      <div class="s">${plural(l.people.length, "person").replace("persons", "people")} (${esc(who)}) · ${plural(l.songs, "song")}${l.in_jukebox ? " · extra copies of a playlist that's here" : ""}</div></div>
+      <span class="acts">
+        ${l.in_jukebox || !l.songs ? "" : `<button class="go" data-restore="${esc(l.name)}">Bring back</button>`}
+        <button class="go danger" data-del="${esc(l.name)}" data-n="${l.copies}">Delete</button>
+      </span>
+    </div>`;
+  }).join("") : `<div class="none">No leftovers: everyone's 👥 playlists are in sync.</div>`;
+}
+
+async function loadOthers() {
+  let items = [];
+  try { items = await api("/api/others"); } catch (_) {}
+  $("others-wrap").hidden = !items.length;
+  $("others-list").innerHTML = items.map((p) => `
+    <div class="import-item leftover" title="Shared with: ${esc(p.people.join(", "))}">
+      <div><div class="t">${esc(p.name)}</div>
+      <div class="s">${plural(p.people.length, "person").replace("persons", "people")} · ${plural(p.count, "song")}</div></div>
+      <span class="acts">
+        <button class="go" data-join="${p.id}">Join</button>
+        <button class="go danger" data-delpl="${p.id}" data-name="${esc(p.name)}">Delete</button>
+      </span>
+    </div>`).join("");
+}
+
+$("show-leftovers").onclick = () => {
+  const box = $("leftover-box");
+  box.hidden = !box.hidden;
+  if (!box.hidden) { loadLeftovers(); loadOthers(); }
 };
+
+$("others-list").addEventListener("click", async (e) => {
+  const join = e.target.closest("[data-join]");
+  const del = e.target.closest("[data-delpl]");
+  if (!join && !del) return;
+  if (del && !confirm(`Delete “${del.dataset.name}” for everyone? It'll be removed from everyone's Plex too.`)) return;
+  $("others-list").querySelectorAll("button").forEach((x) => (x.disabled = true));
+  try {
+    if (join) {
+      await api(`/api/others/${join.dataset.join}/join`, { method: "POST" });
+      state.currentId = Number(join.dataset.join);
+      await loadPlaylists();
+      await loadPlaylist();
+      toast("You're in. It'll show up in your Plex too.");
+    } else {
+      await api(`/api/others/${del.dataset.delpl}`, { method: "DELETE" });
+      toast(`Deleted “${esc(del.dataset.name)}”. It's being removed from everyone's Plex.`);
+    }
+  } catch (_) {}
+  loadOthers();
+});
+
+$("leftover-list").addEventListener("click", async (e) => {
+  const del = e.target.closest("[data-del]");
+  const res = e.target.closest("[data-restore]");
+  if (!del && !res) return;
+  if (del && !confirm(`Delete “👥 ${del.dataset.del}” from everyone's Plex (${plural(Number(del.dataset.n), "copy").replace("copys", "copies")})? This can't be undone.`)) return;
+  $("leftover-list").querySelectorAll("button").forEach((x) => (x.disabled = true));
+  try {
+    if (del) {
+      const r = await api("/api/leftovers/delete", { method: "POST", body: { name: del.dataset.del } });
+      toast(`Deleted from ${plural(r.deleted, "person's Plex").replace("person's Plexs", "people's Plex")}` +
+        (r.queued ? `. ${plural(r.queued, "person")}'s Plex didn't answer; try again later.` : ""));
+    } else {
+      const r = await api("/api/leftovers/restore", { method: "POST", body: { name: res.dataset.restore } });
+      toast(`Brought back “${esc(r.names[0])}”`);
+      await loadPlaylists();
+    }
+  } catch (_) { /* api() already showed the error */ }
+  loadLeftovers();
+});
 
 $("import-list").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-import]");
@@ -472,7 +540,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && st
   const cfg = await api("/api/config");
   $("demo-badge").hidden = !cfg.demo;
   $("me-name").textContent = state.me.title;
-  $("recover").hidden = !state.me.is_owner;
+  $("show-leftovers").hidden = !state.me.is_owner;
   $("search").value = ""; // browsers restore old input on reload
   $("login").hidden = true;
   $("app").hidden = false;

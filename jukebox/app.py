@@ -71,6 +71,10 @@ class MemberIn(BaseModel):
     member: str
 
 
+class LeftoverIn(BaseModel):
+    name: str
+
+
 class ImportIn(BaseModel):
     key: str
     keep_original: bool = False
@@ -241,11 +245,62 @@ def create_app(cfg, backend, db, sync, hub: Hub):
         changed(pid, u["title"], "shared one of their Plex playlists")
         return {"id": pid, "count": count, "adopted": adopted}
 
-    @app.post("/api/recover")
-    def recover(u=Depends(user)):
-        """Owner only: rebuild shared playlists from 👥 copies left from an earlier install."""
+    def owner(u=Depends(user)):
         if not member_map()[u["id"]].is_owner:
             raise HTTPException(403, "Only the server owner can do this")
+        return u
+
+    @app.get("/api/leftovers")
+    def leftovers(u=Depends(owner)):
+        """👥 playlists in people's Plex that Jukebox isn't keeping in sync."""
+        return sync.leftovers()
+
+    @app.post("/api/leftovers/delete")
+    def delete_leftovers(body: LeftoverIn, u=Depends(owner)):
+        deleted, queued = sync.delete_leftovers(body.name)
+        return {"deleted": deleted, "queued": queued}
+
+    @app.post("/api/leftovers/restore")
+    def restore_leftovers(body: LeftoverIn, u=Depends(owner)):
+        names = sync.recover(names={body.name})
+        if not names:
+            raise HTTPException(400, "Couldn't bring it back: it has no songs, or a playlist "
+                                     "with that name is already here")
+        hub.notify({"type": "list"})
+        return {"names": names}
+
+    @app.get("/api/others")
+    def others(u=Depends(owner)):
+        """Shared playlists the owner isn't in (e.g. rebuilt from other people's copies)."""
+        names = {m.id: m.title for m in backend.members()}
+        out = []
+        for p in db.list_playlists():
+            ids = db.member_ids(p["id"])
+            if u["id"] not in ids:
+                out.append({"id": p["id"], "name": p["name"], "count": p["count"],
+                            "people": sorted(names.get(i, "someone") for i in ids)})
+        return out
+
+    @app.post("/api/others/{pid}/join")
+    def join(pid: int, u=Depends(owner)):
+        if not db.get_playlist(pid, with_items=False):
+            raise HTTPException(404, "No such playlist")
+        if db.add_member(pid, u["id"], u["title"]):
+            changed(pid, u["title"], "joined")
+        return {"ok": True}
+
+    @app.delete("/api/others/{pid}")
+    def delete_other(pid: int, u=Depends(owner)):
+        if not db.delete_playlist(pid):
+            raise HTTPException(404, "No such playlist")
+        log.info("%s deleted shared playlist %s (wasn't in it)", u["title"], pid)
+        sync.kick()
+        hub.notify({"type": "removed", "id": pid})
+        return {"ok": True}
+
+    @app.post("/api/recover")
+    def recover(u=Depends(owner)):
+        """Bring back every leftover at once."""
         names = sync.recover()
         if names:
             hub.notify({"type": "list"})

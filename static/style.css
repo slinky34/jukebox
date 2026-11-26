@@ -121,6 +121,11 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in sr
 .import-item .s { font-size: 12px; color: var(--muted); }
 .import-item > div { min-width: 0; }
 .import-item .go { color: var(--accent); font-size: 13px; font-weight: 700; flex: none; }
+.leftover { cursor: default; }
+.leftover .acts { display: flex; gap: 10px; flex: none; }
+.leftover button.go { border: 0; background: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--accent); cursor: pointer; padding: 2px 0; }
+.leftover button.go.danger { color: var(--bad); }
+.leftover button.go:disabled { opacity: .5; cursor: progress; }
 .import-box .none { font-size: 13.5px; color: var(--muted); padding: 6px 4px; }
 @media (max-width: 720px) { .new-box { padding: 0 0 10px; } }
 .new-form .btn { border-radius: 10px; }

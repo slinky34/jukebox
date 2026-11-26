@@ -45,8 +45,18 @@
           <p id="keep-hint" class="hint"></p>
           <div id="import-list" class="import-list"></div>
         </div>
-        <button type="button" id="recover" class="link-btn" hidden
-                title="Looks through everyone's Plex for 👥 playlists that Jukebox isn't keeping in sync, and turns them back into shared playlists">…or bring back shared playlists from an earlier install</button>
+        <button type="button" id="show-leftovers" class="link-btn" hidden>…or clean up 👥 playlists (owner)</button>
+        <div id="leftover-box" class="import-box" hidden>
+          <p class="hint">👥 playlists in people's Plex that Jukebox isn't keeping in sync, e.g. from
+            a playlist deleted while Jukebox was down, or an earlier install. Delete them from
+            everyone's Plex, or bring them back as shared playlists.</p>
+          <div id="leftover-list" class="import-list"></div>
+          <div id="others-wrap" hidden>
+            <p class="hint">Shared playlists you're not in. Join one to see and edit it, or delete it
+              for everyone.</p>
+            <div id="others-list" class="import-list"></div>
+          </div>
+        </div>
       </div>
       <nav id="pl-list" class="pl-list"></nav>
     </aside>

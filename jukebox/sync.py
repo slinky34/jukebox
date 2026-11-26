@@ -110,50 +110,104 @@ class SyncEngine:
 
     # ---- recovering playlists from an earlier install ---------------------------
 
-    def recover(self):
-        """Rebuild shared playlists from the prefixed copies already in people's Plex.
+    def _scan_leftovers(self, members, names=None):
+        """Prefixed playlists in people's Plex that Jukebox isn't syncing ("leftovers").
+
+        Returns ({name: [(member, plex key, title, song count), ...]}, people whose Plex
+        didn't answer). Every copy is included: someone can have several with the same name.
+        Must hold _run_lock.
+        """
+        missed = []
+        if not self.prefix:
+            return {}, missed
+        pending = {}
+        for row in self.db.pending_mirror_deletes():
+            pending.setdefault(row["member_id"], set()).add(row["plex_key"])
+        found = {}
+        for m in members:
+            skip = self.db.mirror_keys(m.id) | pending.get(m.id, set())
+            try:
+                pls = self.backend.user_playlists(m)
+            except Exception as e:
+                log.warning("Couldn't look for leftover shared playlists in %s's Plex: %s", m.title, e)
+                missed.append(m)
+                continue
+            for p in pls:
+                if p["smart"] or p["key"] in skip or not p["title"].startswith(self.prefix):
+                    continue
+                name = p["title"][len(self.prefix):].strip()
+                if not name or (names is not None and name not in names):
+                    continue
+                found.setdefault(name, []).append((m, p["key"], p["title"], p["count"]))
+        return found, missed
+
+    def leftovers(self):
+        """Summary of leftover copies, for the owner to delete or bring back."""
+        with self._run_lock:
+            found, _ = self._scan_leftovers(self.backend.members())
+            existing = {p["name"] for p in self.db.list_playlists()}
+        out = []
+        for name, copies in sorted(found.items(), key=lambda kv: kv[0].lower()):
+            people = list(dict.fromkeys(m.title for m, *_ in copies))
+            out.append({"name": name, "copies": len(copies), "people": people,
+                        "songs": max(c for *_, c in copies),
+                        # Same name as a playlist Jukebox has: these are stray duplicates.
+                        "in_jukebox": name in existing})
+        return out
+
+    def delete_leftovers(self, name):
+        """Delete every leftover copy called <prefix><name> from everyone's Plex.
+
+        Shared playlists Jukebox knows about are never touched: only copies it isn't syncing.
+        Returns (copies deleted, people whose Plex didn't answer: run it again later for those).
+        """
+        deleted = 0
+        with self._run_lock:
+            found, missed = self._scan_leftovers(self.backend.members(), names={name})
+            queued = len(missed)
+            for m, key, title, _ in found.get(name, []):
+                try:
+                    self.backend.mirror_delete(m, key)
+                    deleted += 1
+                except Exception as e:
+                    log.warning("Couldn't delete %r from %s's Plex (will retry): %s", title, m.title, e)
+                    self.db.queue_mirror_delete(m.id, key)  # sync retries it
+        log.info("Deleted %d leftover copies of %r%s", deleted, name,
+                 f" ({queued} people's Plex didn't answer)" if queued else "")
+        return deleted, queued
+
+    def recover(self, names=None):
+        """Rebuild shared playlists from the leftover copies in people's Plex.
 
         For when the database was lost or this is a fresh install: every "<prefix>Name"
         playlist that isn't a known copy becomes (part of) shared playlist "Name", shared with
         everyone who has a copy, and their existing copies are kept and synced from then on
-        (no duplicates). Names that already exist here are left alone.
-        Returns the names of the playlists rebuilt.
+        (no duplicates). Names that already exist here are left alone. `names` limits it to
+        those playlists. Returns the names of the playlists rebuilt.
         """
-        if not self.prefix:
-            return []
         with self._run_lock:
             members = self.backend.members()
-            known = {}  # member id -> Plex keys we already sync or are about to delete
-            for row in self.db.pending_mirror_deletes():
-                known.setdefault(row["member_id"], set()).add(row["plex_key"])
             existing = {p["name"] for p in self.db.list_playlists()}
             found = {}  # name -> {member id: (plex key, title, track keys)}
-            for m in members:
-                skip = self.db.mirror_keys(m.id) | known.get(m.id, set())
-                try:
-                    pls = self.backend.user_playlists(m)
-                except Exception as e:
-                    log.warning("Couldn't look for earlier shared playlists in %s's Plex: %s", m.title, e)
+            for name, copies in self._scan_leftovers(members, names)[0].items():
+                if name in existing:
                     continue
-                for p in pls:
-                    if p["smart"] or p["key"] in skip or not p["title"].startswith(self.prefix):
-                        continue
-                    name = p["title"][len(self.prefix):].strip()
-                    if not name or name in existing:
-                        continue
+                for m, key, title, _ in copies:
                     try:
-                        keys = self.backend.user_playlist_keys(m, p["key"]) or []
+                        keys = self.backend.user_playlist_keys(m, key) or []
                     except Exception as e:
-                        log.warning("Couldn't read %s's %r: %s", m.title, p["title"], e)
+                        log.warning("Couldn't read %s's %r: %s", m.title, title, e)
                         continue
                     have = found.setdefault(name, {}).get(m.id)
                     if keys and (not have or len(keys) > len(have[2])):  # two copies: keep the bigger
-                        found[name][m.id] = (p["key"], p["title"], keys)
+                        found[name][m.id] = (key, title, keys)
 
             rebuilt = []
             order = {m.id: i for i, m in enumerate(sorted(members, key=lambda m: not m.is_owner))}
             by_id = {m.id: m for m in members}
             for name, copies in sorted(found.items()):
+                if not copies:
+                    continue
                 who = sorted(copies, key=lambda mid: order[mid])
                 # Owner's copy first (else the biggest), then anything only others still have.
                 base = who[0] if by_id[who[0]].is_owner else max(who, key=lambda mid: len(copies[mid][2]))
