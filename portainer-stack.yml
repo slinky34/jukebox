@@ -1,0 +1,32 @@
+# Jukebox for Portainer: Stacks > Add stack > Web editor, paste this in.
+# Then under "Environment variables" add at least PLEX_TOKEN (the others are optional).
+# Update: open the stack > "Pull and redeploy" (or "Update the stack" with "Re-pull image" on).
+# Your playlists live in the "jukebox-data" volume, which updates never touch.
+services:
+  jukebox:
+    image: ghcr.io/slinky34/jukebox:latest
+    container_name: jukebox
+    restart: unless-stopped
+    ports:
+      - "${JUKEBOX_PORT:-8765}:8765"
+    environment:
+      PLEX_TOKEN: ${PLEX_TOKEN:?Add PLEX_TOKEN under Environment variables}
+      # Plex on the same machine as Docker. Set PLEX_URL if Plex is elsewhere,
+      # e.g. http://192.168.1.20:32400
+      PLEX_URL: ${PLEX_URL:-http://host.docker.internal:32400}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      ALLOWED_USERS: ${ALLOWED_USERS:-}
+      POLL_SECONDS: ${POLL_SECONDS:-20}
+      PULL_FROM_PLEX: ${PULL_FROM_PLEX:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - jukebox-data:/data
+    logging:
+      driver: local
+      options:
+        max-size: "5m"
+
+volumes:
+  jukebox-data:
+    name: jukebox-data

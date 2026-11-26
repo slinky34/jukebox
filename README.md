@@ -63,6 +63,20 @@ your playlists live. Plain `docker compose down` is fine.
 
 To back up: `docker compose cp jukebox:/data/jukebox.db jukebox-backup.db`
 
+### With Portainer
+
+1. **Stacks > Add stack**, name it `jukebox`, choose **Web editor**, and paste in
+   [`portainer-stack.yml`](portainer-stack.yml). Or choose **Repository** with
+   `https://github.com/slinky34/jukebox` and compose path `portainer-stack.yml`.
+2. Under **Environment variables**, add `PLEX_TOKEN` with your token. Optional:
+   `PLEX_URL` (if Plex isn't on the Docker machine), `JUKEBOX_PORT`, `PUBLIC_URL`,
+   `ALLOWED_USERS` (comma-separated).
+3. **Deploy the stack**, then open `http://<docker-machine-ip>:8765`.
+
+To update: open the stack and use **Pull and redeploy** (Repository stacks), or
+**Update the stack** with **Re-pull image** turned on (Web editor stacks). The
+`jukebox-data` volume keeps your playlists. Don't remove it when deleting the stack.
+
 ### Moving over from the Windows installer
 
 1. Run `uninstall-windows.bat` first, so the old copy stops. Two copies running at once
