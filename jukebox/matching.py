@@ -87,3 +87,20 @@ def best_match(want: dict, candidates: list):
         if s > best_score:
             best, best_score = c, s
     return best if best_score >= MATCH else None
+
+
+def loose_score(want: dict, have: dict) -> float:
+    """Like score(), but never rules anything out: for ranking suggestions a person picks from."""
+    t = max(similar(clean_title(want["title"]), clean_title(have["title"])),
+            similar(want["title"], have["title"]))
+    wa, ha = artists(want.get("artist", "")), artists(have.get("artist", ""))
+    if wa and ha:
+        a = 1.0 if wa & ha else max(similar(x, y) for x in wa for y in ha)
+    else:
+        a = 0.5
+    d = 0.5
+    wd, hd = want.get("duration") or 0, have.get("duration") or 0
+    if wd and hd:
+        gap = abs(wd - hd) / 1000
+        d = 1.0 if gap <= 3 else 0.7 if gap <= 10 else 0.4 if gap <= 45 else 0.0
+    return 0.6 * t + 0.3 * a + 0.1 * d

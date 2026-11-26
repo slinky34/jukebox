@@ -289,3 +289,16 @@ button.chip.add:hover { border-color: var(--accent); }
 .panel-title { font-weight: 700; font-size: 14.5px; }
 .import-panel .hint { margin: 4px 0 10px; }
 .empty-acts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+.finder { list-style: none; margin: 2px 0 10px 6px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.finder-q { width: 100%; margin-bottom: 8px; }
+.finder-list { display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow-y: auto; }
+.finder .none { color: var(--muted); font-size: 13.5px; padding: 6px 4px; }
+.sugg { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px; border-radius: 8px; flex: none; }
+.sugg:hover { background: var(--hover); }
+.sugg .art { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.sugg .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sugg .a { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.score { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.score.mid { color: var(--warn); }
+.score.hi { color: var(--ok); }

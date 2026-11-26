@@ -15,7 +15,7 @@ import time
 
 from . import external
 from .downloaders import DownloadError, from_config, tidy
-from .matching import best_match, clean_title
+from .matching import best_match, clean_title, loose_score
 
 log = logging.getLogger("jukebox.import")
 
@@ -66,6 +66,46 @@ class Importer:
             if hit:
                 return hit
         return None
+
+    def suggest(self, w, member, q=None, limit=8):
+        """Plex tracks that might be this waiting song, best first, each with a 0-100 score.
+
+        Without q it searches by the title (with and without "feat."/"Remastered" bits),
+        its first words, and the artist's name, so near misses turn up too.
+        """
+        by_artist = []
+        if q:
+            queries = [q.strip()[:200]]
+        else:
+            title = clean_title(w["title"])
+            words = title.split()
+            queries = [title, w["title"]]
+            if len(words) > 2:
+                queries.append(" ".join(words[:2]))
+            # Artists as written by the other service ("Justin Bieber, Nicki Minaj").
+            names = [a.strip() for a in (w.get("artist") or "").replace("&", ",").split(",")]
+            by_artist = [a for a in names if len(a) > 1][:3]
+        seen = {}
+        jobs = [(self.backend.find_tracks, x) for x in dict.fromkeys(x for x in queries if x)]
+        jobs += [(self.backend.artist_tracks, a) for a in by_artist]
+        for fn, query in jobs:
+            try:
+                for t in fn(query, member) if fn == self.backend.artist_tracks else fn(query, member, 30):
+                    seen.setdefault(t["key"], t)
+            except Exception as e:
+                log.warning("Plex search failed for %r: %s", query, e)
+        ranked = sorted(seen.values(), key=lambda t: loose_score(w, t), reverse=True)
+        out = [{**t, "score": round(loose_score(w, t) * 100)} for t in ranked]
+        return out if q else [t for t in out[:limit] if t["score"] >= 35]
+
+    def use_match(self, w, track, who):
+        """Put a Plex track in for a waiting song (chosen by a person), in the song's place."""
+        keys = self.db.playlist_keys(w["playlist_id"])
+        index = keys.index(w["after_key"]) + 1 if w["after_key"] in keys else None
+        added = self.db.add_tracks(w["playlist_id"], [track], who, index)
+        self.db.delete_wanted(w["id"])
+        self.kick()
+        return bool(added)
 
     def check_wanted(self):
         """Add waiting songs that have turned up in Plex. Returns how many were added."""

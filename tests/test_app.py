@@ -114,6 +114,20 @@ class AppSecurityTest(unittest.TestCase):
         self.assertEqual(sam.get(f"/api/playlists/{pid}").json()["waiting"][0]["title"], "Not Here")
         self.assertEqual(sam.delete(f"/api/playlists/{pid}/waiting/{w['id']}").status_code, 200)
 
+    def test_find_in_plex_endpoints(self):
+        sam, riley = self.client("2"), self.client("3")
+        pid = sam.post("/api/playlists", json={"name": "x"}).json()["id"]
+        sam.post(f"/api/playlists/{pid}/want", json={"title": "Zzz Unknown", "artist": "Nobody"})
+        wid = self.db.wanted_for(pid)[0]["id"]
+        base = f"/api/playlists/{pid}/waiting/{wid}"
+        self.assertEqual(riley.get(base + "/suggest").status_code, 404)
+        self.assertEqual(riley.post(base + "/use", json={"key": "1001"}).status_code, 404)
+        self.assertEqual(sam.post(base + "/use", json={"key": "../../x"}).status_code, 404)
+        self.assertEqual(sam.get(base + "/suggest?q=a").status_code, 200)
+        self.assertEqual(sam.post(base + "/use", json={"key": "1001"}).status_code, 200)
+        self.assertEqual(self.db.playlist_keys(pid), ["1001"])
+        self.assertEqual(self.db.wanted_for(pid), [])
+
     def test_secrets_never_reach_the_browser(self):
         self.app_cfg_secret_check = True
         c = self.client("1")

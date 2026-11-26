@@ -99,6 +99,29 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(self.db.playlist_keys(pid), [a["key"], "9999", b["key"]])
         self.assertEqual(self.db.wanted_for(pid), [])
 
+    def test_near_misses_are_suggested_and_can_be_chosen(self):
+        a, b = self.lib[0], self.lib[1]
+        pid = self.db.create_playlist("P", "Sam", "2")
+        self.db.add_tracks(pid, [a, b], "Sam")
+        # Too different for the automatic match (a typo and a long live intro), but close.
+        self.db.add_wanted(pid, [{"title": a["title"][:-1] + "z (Live)", "artist": a["artist"],
+                                  "duration": a["duration"] + 120000, "after_key": a["key"]}], "Sam")
+        w = self.db.wanted_for(pid)[0]
+        self.assertIsNone(self.imp.match(w))
+        sugg = self.imp.suggest(w, self.sam)
+        self.assertTrue(sugg)
+        self.assertTrue(all(0 <= x["score"] <= 100 for x in sugg))
+        self.assertEqual(sorted(sugg, key=lambda x: -x["score"]), sugg)
+        # Found through the artist even though the title search can't find it.
+        self.assertIn(a["key"], [x["key"] for x in sugg])
+        # Searching yourself returns whatever matches the text.
+        self.assertIn(b["key"], [x["key"] for x in self.imp.suggest(w, self.sam, q=b["title"])])
+        # Choosing one: the waiting song is replaced... here by b, which is already in it.
+        c = self.lib[10]
+        self.imp.use_match(w, c, "Sam")
+        self.assertEqual(self.db.playlist_keys(pid), [a["key"], c["key"], b["key"]])
+        self.assertEqual(self.db.wanted_for(pid), [])
+
     def test_dropping_missing_songs(self):
         jid = self.run_import([{"title": "Not In Plex", "artist": "Nobody", "album": "", "duration": 0}])
         pid, added, waiting = self.imp.create_from_job(jid, self.sam, "", keep_missing=False)

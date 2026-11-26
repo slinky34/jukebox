@@ -12,12 +12,12 @@ from urllib.parse import urlparse
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import plexauth
+from . import __version__, plexauth
 from .backend import redact
 from .downloaders import DownloadError
 from .external import ImportError_, deezer_search
@@ -74,6 +74,10 @@ class DemoLoginIn(BaseModel):
 
 class MemberIn(BaseModel):
     member: str
+
+
+class KeyIn(BaseModel):
+    key: str
 
 
 class UrlIn(BaseModel):
@@ -173,9 +177,14 @@ def create_app(cfg, backend, db, sync, hub: Hub, importer=None):
 
     # ---- pages & sign-in ------------------------------------------------
 
+    # The version in the script/style links makes browsers fetch fresh copies after an update.
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    for name in ("app.js", "style.css"):
+        page = page.replace(f"/static/{name}", f"/static/{name}?v={__version__}")
+
     @app.get("/")
     def index():
-        return FileResponse(STATIC / "index.html")
+        return HTMLResponse(page, headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/config")
     def config():
@@ -437,6 +446,24 @@ def create_app(cfg, backend, db, sync, hub: Hub, importer=None):
                 failed += 1
         changed(pid, u["title"], f"asked for {sent} song{'s' * (sent != 1)} to be downloaded")
         return {"sent": sent, "failed": failed}
+
+    @app.get("/api/playlists/{pid}/waiting/{wid}/suggest")
+    def suggest(pid: int, wid: int, q: str = "", u=Depends(user)):
+        """Plex tracks that might be this song (near misses), or a search of your own."""
+        get_or_404(pid, u)
+        w = waiting_row(pid, wid)
+        return importer.suggest(w, member_map()[u["id"]], q.strip() or None)
+
+    @app.post("/api/playlists/{pid}/waiting/{wid}/use")
+    def use_match(pid: int, wid: int, body: KeyIn, u=Depends(user)):
+        get_or_404(pid, u)
+        w = waiting_row(pid, wid)
+        found = backend.get_tracks([body.key], member_map()[u["id"]])
+        if not found:
+            raise HTTPException(404, "That track isn't in your Plex")
+        importer.use_match(w, found[0], u["title"])
+        changed(pid, u["title"], f"matched “{w['title']}” to “{found[0]['title']}” in Plex")
+        return {"ok": True}
 
     @app.delete("/api/playlists/{pid}/waiting/{wid}")
     def forget_waiting(pid: int, wid: int, u=Depends(user)):

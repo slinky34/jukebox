@@ -217,6 +217,9 @@ differences like "feat. …" or "Remastered") and shows how many it found. Give 
 - **Songs that aren't in your Plex** can be kept as **waiting**. They're listed under the
   playlist and added in their place automatically once they show up in Plex. Jukebox looks
   for them every 10 minutes, or press **Check Plex now**.
+- **Missed a match?** Press **Find in Plex** on a waiting song. It lists the closest tracks
+  in your Plex with a match percentage (it also looks through the artist's songs), and you
+  can search yourself. **Use this** puts the one you pick in the song's place.
 - **Spotify** shows only the first 100 songs of a playlist to apps without a key. For the
   full list, create a free app at <https://developer.spotify.com/dashboard> and set
   `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. Spotify's own editorial playlists

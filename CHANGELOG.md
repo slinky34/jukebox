@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3 - 2026-11-25
+
+- **Find in Plex** on each waiting song: shows the closest tracks in your Plex with how well
+  each matches (catching typos, different versions, featured artists and different
+  lengths), plus a box to search Plex yourself. **Use this** puts it in the song's place.
+- After an update, browsers load the new page straight away instead of an old cached copy.
+
 ## 0.3.2 - 2026-11-25
 
 - **Import has its own button.** **Import** next to **+** at the top of the playlist list

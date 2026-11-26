@@ -169,15 +169,69 @@ function renderWaiting(pl) {
         <div class="a">${esc(x.artist)}${x.album ? " · " + esc(x.album) : ""}</div></div>
       <span class="wstate" title="${esc(x.note || "")}">${WAIT_STATE[x.status] || esc(x.status)}${x.note && x.status === "failed" ? ": " + esc(x.note) : ""}</span>
       <span class="cat-acts">
+        <button class="btn ghost" data-find="${x.id}" title="Pick the right track from your Plex yourself">Find in Plex</button>
         ${dl && x.status !== "requested" ? `<button class="btn" data-dl="${x.id}">${x.status === "failed" ? "Retry" : "Download"}</button>` : ""}
         <button class="btn ghost icon x" data-forget="${x.id}" title="Stop waiting for it" aria-label="Stop waiting for ${esc(x.title)}">×</button>
       </span>
     </li>`).join("");
+  if (state.finder && w.some((x) => x.id === state.finder)) openFinder(state.finder);
+  else state.finder = null;
+}
+
+/* Find in Plex: near misses for a waiting song, or your own search of Plex. */
+function openFinder(wid) {
+  document.querySelectorAll(".finder").forEach((f) => f.remove());
+  state.finder = wid;
+  const row = document.querySelector(`#waiting-list [data-find="${wid}"]`)?.closest("li");
+  if (!row) return;
+  row.insertAdjacentHTML("afterend", `
+    <li class="finder" data-wid="${wid}">
+      <input class="finder-q" placeholder="Search your Plex (title or artist)…" autocomplete="off">
+      <div class="finder-list"><div class="none">Looking for close matches…</div></div>
+    </li>`);
+  const f = row.nextElementSibling;
+  let timer;
+  f.querySelector(".finder-q").addEventListener("input", (e) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => loadSuggestions(f, wid, e.target.value.trim()), 250);
+  });
+  loadSuggestions(f, wid, "");
+}
+
+async function loadSuggestions(f, wid, q) {
+  const list = f.querySelector(".finder-list");
+  let res;
+  try { res = await api(`/api/playlists/${state.pl.id}/waiting/${wid}/suggest?q=${encodeURIComponent(q)}`); }
+  catch (_) { list.innerHTML = `<div class="none">Couldn't search Plex.</div>`; return; }
+  if (!f.isConnected) return;
+  list.innerHTML = res.length ? res.slice(0, 25).map((t) => `
+    <div class="sugg">
+      <img class="art" src="${thumb(t.key)}" alt="" loading="lazy">
+      <div style="min-width:0"><div class="t">${esc(t.title)}</div><div class="a">${esc(t.artist)} · ${esc(t.album)} · ${dur(t.duration)}</div></div>
+      <span class="score ${t.score >= 80 ? "hi" : t.score >= 60 ? "mid" : ""}" title="How closely it matches">${t.score}%</span>
+      <button class="btn" data-use="${esc(t.key)}">Use this</button>
+    </div>`).join("")
+    : `<div class="none">${q ? "Nothing in your Plex matches that." : "No close matches. Try searching above."}</div>`;
 }
 
 $("waiting-list").addEventListener("click", async (e) => {
   const b = e.target.closest("button");
   if (!b || !state.pl) return;
+  if (b.dataset.find) {
+    if (state.finder === Number(b.dataset.find)) { state.finder = null; document.querySelectorAll(".finder").forEach((f) => f.remove()); }
+    else openFinder(Number(b.dataset.find));
+    return;
+  }
+  if (b.dataset.use) {
+    const wid = b.closest(".finder").dataset.wid;
+    b.disabled = true;
+    try {
+      await api(`/api/playlists/${state.pl.id}/waiting/${wid}/use`, { method: "POST", body: { key: b.dataset.use } });
+      state.finder = null;
+      toast("Added to the playlist in its place");
+    } catch (_) { b.disabled = false; return; }
+    return loadPlaylist();
+  }
   b.disabled = true;
   try {
     if (b.dataset.dl) {

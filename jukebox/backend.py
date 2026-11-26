@@ -244,6 +244,17 @@ class PlexBackend(BaseBackend):
         """Tracks whose title matches q (for matching songs from other services)."""
         return self._as(member, lambda srv: [self._track(t) for t in srv.search(q, mediatype="track", limit=limit)])
 
+    def artist_tracks(self, name: str, member=None, limit=400):
+        """Every track by the best-matching artist or two (for suggesting near misses)."""
+        def fetch(srv):
+            out = []
+            for a in srv.search(name, mediatype="artist", limit=2):
+                out += [self._track(t) for t in a.tracks()]
+                if len(out) >= limit:
+                    break
+            return out[:limit]
+        return self._as(member, fetch)
+
     def album_tracks(self, key: str, member=None):
         if not is_key(key):
             return []
@@ -438,6 +449,12 @@ class DemoBackend(BaseBackend):
 
         q = fold(q)
         return [t for t in self.library.values() if q and q in fold(t["title"])][:limit]
+
+    def artist_tracks(self, name, member=None, limit=400):
+        from .matching import fold
+
+        name = fold(name)
+        return [t for t in self.library.values() if name and name in fold(t["artist"])][:limit]
 
     def album_tracks(self, key, member=None):
         return [self.library[k] for k in self.albums.get(key, {}).get("tracks", [])]
