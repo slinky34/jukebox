@@ -100,6 +100,72 @@ The server owner can also run the same search any time from the web page: **+** 
 **…or bring back shared playlists from an earlier install**. It only adds playlists that
 aren't there yet.
 
+### Running it on a different machine than Plex
+
+Jukebox doesn't have to run on the Plex computer. A Proxmox LXC or VM, a NAS, or any
+Docker or Portainer host on the same network works. What changes:
+
+- **Set `PLEX_URL` to the Plex computer's address**, e.g. `http://192.168.1.20:32400`.
+  The default (`host.docker.internal`) means "this same machine", so it only works when
+  Jukebox and Plex share a computer. Give the Plex computer a fixed IP (a DHCP
+  reservation in your router) so the address doesn't change under you.
+- **Plex has to accept connections from the network.** Check from the new machine:
+  `curl http://192.168.1.20:32400/identity` should print a short bit of XML. If it
+  doesn't, allow port 32400 in the Plex computer's firewall (the Plex installer usually
+  does this). If the curl works but Jukebox says it can't reach Plex or that the token
+  was rejected, check Plex's **Settings > Network > Secure connections**: if it's
+  **Required**, set it to **Preferred** (the default).
+- **The web page moves to the new machine's address**: `http://<new-machine-ip>:8765`.
+  Tell everyone the new link; they sign in with Plex once more.
+- **Plex sign-in, Plexamp edits and everything else work the same.** Jukebox only talks
+  to Plex over the network anyway, and edits made in Plexamp go through Plex.
+- **If the Plex computer is off or asleep,** Jukebox keeps running. Changes made in the
+  web page meanwhile are saved and reach everyone's Plex once it's back (searching for
+  new songs needs Plex, though). At start-up,
+  Jukebox waits up to 10 minutes for Plex; Docker restarts it if that runs out.
+- **Proxmox LXC:** to run Docker inside an LXC, turn on **Options > Features > Nesting**
+  (and **keyctl** for an unprivileged container), then install Docker in it. Or skip
+  Docker and run it with Python (see "Without Docker").
+- **Only one Jukebox at a time.** Stop the old one before you start the new one, or the
+  two will fight over everyone's playlists.
+
+### Moving Jukebox to another machine and keeping your data
+
+You have two choices.
+
+**Quick: let it rebuild.** Stop the old Jukebox, then start the new one with an empty
+volume and the right `PLEX_URL`. It finds the `👥` playlists in everyone's Plex and
+rebuilds them (see above). You lose only who added each song, playlists with no songs,
+and people who had deleted their copy.
+
+**Complete: move the data.** This keeps everything exactly as it was.
+
+1. **On the old machine, stop Jukebox and copy its data out.**
+   - Running in Docker (including Docker Desktop on Windows): from a terminal,
+     ```
+     docker stop jukebox
+     docker cp jukebox:/data ./jukebox-data-backup
+     ```
+     That makes a `jukebox-data-backup` folder holding `jukebox.db` and two small key files.
+   - Running with the old Windows installer: run `uninstall-windows.bat`. The data is
+     the `data` folder inside the jukebox folder; use that folder below.
+2. **Copy that folder to the new machine,** e.g. to `/root/jukebox-data-backup`. Use a USB
+   stick, a network share, or from the old machine:
+   `scp -r jukebox-data-backup root@<new-machine-ip>:/root/`
+3. **On the new machine, load it into a volume before the first start:**
+   ```
+   docker volume create jukebox-data
+   docker run --rm -v jukebox-data:/data -v /root/jukebox-data-backup:/old alpine sh -c "cp -a /old/. /data/ && chown -R 1000:1000 /data"
+   ```
+4. **Start Jukebox on the new machine**: the Portainer stack or `docker compose up -d`,
+   with `PLEX_URL` set to the Plex computer's address. It uses the `jukebox-data` volume
+   you just filled. (Docker may say the volume "already exists": that's expected.)
+5. **Check it**: the web page shows all your playlists, and the log does *not* say
+   "Recovered", which would mean it started empty.
+6. **Remove the old one** once you're happy: `docker rm jukebox` on the old machine.
+   Leave its volume for a while as a backup; `docker volume rm jukebox-data` deletes it
+   for good.
+
 ### Finding your Plex token
 
 The easiest way: in Plex Web, open any song, choose **⋯ → Get Info → View XML**. The URL
