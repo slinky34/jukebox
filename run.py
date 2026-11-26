@@ -23,6 +23,7 @@ from jukebox import __version__
 from jukebox.app import Hub, create_app
 from jukebox.backend import DemoBackend, PlexBackend, redact
 from jukebox.db import DB
+from jukebox.importer import Importer
 from jukebox.sync import SyncEngine
 
 ROOT = Path(__file__).resolve().parent
@@ -37,6 +38,20 @@ DEFAULTS = {
     "poll_seconds": 20,
     "pull_from_plex": True,
     "allowed_users": [],
+    # Importing from Spotify (optional keys: without them, only the first 100 songs).
+    "spotify_client_id": "",
+    "spotify_client_secret": "",
+    # Downloading songs that aren't in Plex: deemix, or Lidarr. Who may: owner | everyone | off.
+    "deemix_url": "",
+    "deemix_arl": "",
+    "deemix_bitrate": "",
+    "lidarr_url": "",
+    "lidarr_api_key": "",
+    "lidarr_root_folder": "",
+    "lidarr_quality_profile": "",
+    "lidarr_metadata_profile": "",
+    "downloads": "owner",
+    "wanted_check_minutes": 10,
 }
 
 
@@ -49,6 +64,18 @@ ENV = {
     "POLL_SECONDS": ("poll_seconds", int),
     "PULL_FROM_PLEX": ("pull_from_plex", lambda v: v.strip().lower() in ("1", "true", "yes", "on")),
     "ALLOWED_USERS": ("allowed_users", lambda v: [u.strip() for u in v.split(",") if u.strip()]),
+    "SPOTIFY_CLIENT_ID": ("spotify_client_id", str),
+    "SPOTIFY_CLIENT_SECRET": ("spotify_client_secret", str),
+    "DEEMIX_URL": ("deemix_url", str),
+    "DEEMIX_ARL": ("deemix_arl", str),
+    "DEEMIX_BITRATE": ("deemix_bitrate", str),
+    "LIDARR_URL": ("lidarr_url", str),
+    "LIDARR_API_KEY": ("lidarr_api_key", str),
+    "LIDARR_ROOT_FOLDER": ("lidarr_root_folder", str),
+    "LIDARR_QUALITY_PROFILE": ("lidarr_quality_profile", str),
+    "LIDARR_METADATA_PROFILE": ("lidarr_metadata_profile", str),
+    "DOWNLOADS": ("downloads", str),
+    "WANTED_CHECK_MINUTES": ("wanted_check_minutes", int),
 }
 
 
@@ -145,7 +172,14 @@ def main():
             log.info("Recovered %d shared playlist(s) from Plex", len(found)) if found else None
         except Exception:
             log.exception("Couldn't look for earlier shared playlists")
-    app = create_app(cfg, backend, db, sync, hub)
+    importer = Importer(db, backend, cfg, notify=hub.notify, kick=sync.kick)
+    if args.demo:
+        from jukebox.downloaders import DemoDownloader
+
+        importer.downloader, cfg["downloads"] = DemoDownloader(backend), "everyone"
+    if importer.downloader:
+        log.info("Downloads go to %s (allowed for: %s)", importer.downloader.name, cfg["downloads"])
+    app = create_app(cfg, backend, db, sync, hub, importer)
     log.info("Jukebox %s", __version__)
     log.info("Members: %s", ", ".join(m.title for m in backend.members()))
     log.info("Open http://localhost:%s", cfg["port"])

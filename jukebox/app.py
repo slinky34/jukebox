@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -17,6 +19,9 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import plexauth
 from .backend import redact
+from .downloaders import DownloadError
+from .external import ImportError_, deezer_search
+from .importer import Importer
 
 log = logging.getLogger("jukebox.app")
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -71,6 +76,24 @@ class MemberIn(BaseModel):
     member: str
 
 
+class UrlIn(BaseModel):
+    url: str
+
+
+class CreateImportIn(BaseModel):
+    name: str = ""
+    keep_missing: bool = True
+
+
+class SongIn(BaseModel):
+    title: str
+    artist: str = ""
+    album: str = ""
+    duration: int = 0
+    link: Optional[str] = None
+    download: bool = False
+
+
 class LeftoverIn(BaseModel):
     name: str
 
@@ -80,12 +103,17 @@ class ImportIn(BaseModel):
     keep_original: bool = False
 
 
-def create_app(cfg, backend, db, sync, hub: Hub):
+def create_app(cfg, backend, db, sync, hub: Hub, importer=None):
+    if importer is None:
+        importer = Importer(db, backend, cfg, notify=hub.notify, kick=sync.kick)
+
     @asynccontextmanager
     async def lifespan(app):
         hub.loop = asyncio.get_running_loop()
         sync.start()
+        importer.start()
         yield
+        importer.stop()
         sync.stop()
 
     app = FastAPI(title="Jukebox", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -201,7 +229,9 @@ def create_app(cfg, backend, db, sync, hub: Hub):
 
     @app.get("/api/me")
     def me(u=Depends(user)):
-        return {**u, "is_owner": member_map()[u["id"]].is_owner}
+        m = member_map()[u["id"]]
+        return {**u, "is_owner": m.is_owner, "can_download": importer.can_download(m),
+                "downloader": importer.downloader.name if importer.downloader else None}
 
     @app.get("/api/members")
     def members(u=Depends(user)):
@@ -306,9 +336,131 @@ def create_app(cfg, backend, db, sync, hub: Hub):
             hub.notify({"type": "list"})
         return {"names": names}
 
+    # ---- importing from other services, and songs not in Plex yet ----------------
+
+    @app.post("/api/import")
+    def start_import(body: UrlIn, u=Depends(user)):
+        try:
+            return {"job": importer.start_import(member_map()[u["id"]], body.url[:500])}
+        except (ImportError_, ValueError) as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/import/{jid}")
+    def import_status(jid: str, u=Depends(user)):
+        j = importer.job(jid, member_map()[u["id"]])
+        if not j:
+            raise HTTPException(404, "That import has expired. Paste the link again.")
+        return {k: j[k] for k in ("state", "done", "total", "error", "result")}
+
+    @app.post("/api/import/{jid}/create")
+    def create_from_import(jid: str, body: CreateImportIn, u=Depends(user)):
+        try:
+            pid, added, waiting = importer.create_from_job(jid, member_map()[u["id"]], body.name, body.keep_missing)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        changed(pid, u["title"], "imported a playlist")
+        return {"id": pid, "added": added, "waiting": waiting}
+
+    @app.get("/api/catalog")
+    def catalog(q: str = "", u=Depends(user)):
+        """Songs from Deezer's catalogue, for things that aren't in Plex yet."""
+        q = q.strip()
+        if len(q) < 2:
+            return []
+        try:
+            return deezer_search(q, 15)
+        except Exception as e:
+            log.warning("Deezer search failed: %s", e)
+            raise HTTPException(502, "Couldn't search Deezer right now")
+
+    def clean_song(body: SongIn):
+        link = body.link if body.link and re.fullmatch(r"https://www\.deezer\.com/(?:[a-z]{2}/)?track/\d{1,20}", body.link) else None
+        return {"title": body.title.strip()[:300], "artist": body.artist.strip()[:300],
+                "album": body.album.strip()[:300], "duration": max(0, min(body.duration, 86_400_000)), "link": link}
+
+    def download(pid, wid, u):
+        m = member_map()[u["id"]]
+        if not importer.can_download(m):
+            raise HTTPException(403, "Downloads aren't turned on for you")
+        try:
+            res = importer.request_download(wid, u["title"])
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        except DownloadError as e:
+            hub.notify({"type": "playlist", "id": pid})
+            raise HTTPException(502, str(e))
+        changed(pid, u["title"], "asked for a song to be downloaded")
+        return res
+
+    @app.post("/api/playlists/{pid}/want")
+    def want(pid: int, body: SongIn, u=Depends(user)):
+        get_or_404(pid, u)
+        song = clean_song(body)
+        if not song["title"]:
+            raise HTTPException(400, "No song given")
+        res = importer.want(pid, song, u["title"])
+        if "added" in res:
+            changed(pid, u["title"], f"added “{res['added']['title']}”")
+            return {"added": True}
+        out = {"added": False, "waiting": True}
+        if body.download:
+            out["download"] = download(pid, res["waiting"]["id"], u)
+        else:
+            changed(pid, u["title"], f"is waiting for “{song['title']}”")
+        return out
+
+    def waiting_row(pid, wid):
+        w = db.get_wanted(wid)
+        if not w or w["playlist_id"] != pid:
+            raise HTTPException(404, "That song isn't waiting any more")
+        return w
+
+    @app.post("/api/playlists/{pid}/waiting/{wid}/download")
+    def download_one(pid: int, wid: int, u=Depends(user)):
+        get_or_404(pid, u)
+        waiting_row(pid, wid)
+        return download(pid, wid, u)
+
+    @app.post("/api/playlists/{pid}/waiting/download-all")
+    def download_all(pid: int, u=Depends(user)):
+        get_or_404(pid, u)
+        if not importer.can_download(member_map()[u["id"]]):
+            raise HTTPException(403, "Downloads aren't turned on for you")
+        sent, failed = 0, 0
+        for w in db.wanted_for(pid):
+            if w["status"] == "requested":
+                continue
+            try:
+                importer.request_download(w["id"], u["title"])
+                sent += 1
+            except DownloadError:
+                failed += 1
+        changed(pid, u["title"], f"asked for {sent} song{'s' * (sent != 1)} to be downloaded")
+        return {"sent": sent, "failed": failed}
+
+    @app.delete("/api/playlists/{pid}/waiting/{wid}")
+    def forget_waiting(pid: int, wid: int, u=Depends(user)):
+        get_or_404(pid, u)
+        waiting_row(pid, wid)
+        db.delete_wanted(wid)
+        changed(pid, u["title"], "stopped waiting for a song")
+        return {"ok": True}
+
+    last_check = {"at": 0.0}
+
+    @app.post("/api/playlists/{pid}/waiting/check")
+    def check_waiting(pid: int, u=Depends(user)):
+        get_or_404(pid, u)
+        if time.time() - last_check["at"] < 20:
+            return {"added": 0}
+        last_check["at"] = time.time()
+        return {"added": importer.check_wanted()}
+
     @app.get("/api/playlists/{pid}")
     def playlist(pid: int, u=Depends(user)):
         p = get_or_404(pid, u)
+        p["waiting"] = [{k: w[k] for k in ("id", "title", "artist", "album", "status", "note", "added_by")}
+                        for w in db.wanted_for(pid)]
         keys = [it["key"] for it in p["items"]]
         mirrors = {m["member_id"]: m for m in db.mirrors_for(pid)}
         shared_with = db.member_ids(pid)

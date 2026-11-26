@@ -67,7 +67,7 @@ def plan_moves(current: list, target: list) -> list:
             for i in range(len(target)) if i not in keep]
 
 
-_TOKEN_RE = re.compile(r"((?:X-Plex-Token|token)=)[^&\s'\"]+", re.I)
+_TOKEN_RE = re.compile(r"((?:X-Plex-Token|token|arl|apikey|api_key|client_secret)=)[^&\s'\"]+", re.I)
 
 
 def redact(text) -> str:
@@ -239,6 +239,10 @@ class PlexBackend(BaseBackend):
             "albums": [{"key": str(a.ratingKey), "title": a.title, "artist": a.parentTitle,
                         "year": a.year, "count": a.leafCount} for a in albums],
         }
+
+    def find_tracks(self, q: str, member=None, limit=15):
+        """Tracks whose title matches q (for matching songs from other services)."""
+        return self._as(member, lambda srv: [self._track(t) for t in srv.search(q, mediatype="track", limit=limit)])
 
     def album_tracks(self, key: str, member=None):
         if not is_key(key):
@@ -428,6 +432,12 @@ class DemoBackend(BaseBackend):
         albums = [{k: v for k, v in a.items() if k != "tracks"} for a in self.albums.values()
                   if q in a["title"].lower() or q in a["artist"].lower()]
         return {"tracks": tracks[:30], "albums": albums[:8]}
+
+    def find_tracks(self, q, member=None, limit=15):
+        from .matching import fold
+
+        q = fold(q)
+        return [t for t in self.library.values() if q and q in fold(t["title"])][:limit]
 
     def album_tracks(self, key, member=None):
         return [self.library[k] for k in self.albums.get(key, {}).get("tracks", [])]

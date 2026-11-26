@@ -97,7 +97,7 @@ function renderSidebar() {
   $("pl-list").innerHTML = state.playlists.map((p) => `
     <a class="pl-item ${p.id === state.currentId ? "active" : ""}" href="#p=${p.id}" data-id="${p.id}">
       ${p.first_key ? `<img class="art" src="${thumb(p.first_key)}" alt="" loading="lazy">` : `<div class="art" style="background:var(--panel-2)"></div>`}
-      <div><div class="t">${esc(p.name)}</div><div class="s">${plural(p.count, "song")} · ${p.people === 1 ? "just you" : plural(p.people, "person").replace("persons", "people")}</div></div>
+      <div><div class="t">${esc(p.name)}</div><div class="s">${plural(p.count, "song")}${p.waiting ? ` (+${p.waiting} waiting)` : ""} · ${p.people === 1 ? "just you" : plural(p.people, "person").replace("persons", "people")}</div></div>
     </a>`).join("");
 }
 
@@ -140,7 +140,8 @@ function renderPlaylist(flashKeys = new Set()) {
   }).join("") + `<button id="add-people" class="chip add">+ Add people</button>`;
   if (!$("picker").hidden) renderPicker();
 
-  $("no-tracks").hidden = pl.items.length > 0;
+  renderWaiting(pl);
+  $("no-tracks").hidden = pl.items.length > 0 || pl.waiting.length > 0;
   $("tracks").innerHTML = pl.items.map((t, i) => `
     <li class="row ${flashKeys.has(t.key) ? "flash" : ""}" draggable="true" data-key="${esc(t.key)}" data-i="${i}">
       <span class="num" title="Drag to reorder">${i + 1}</span>
@@ -152,6 +153,123 @@ function renderPlaylist(flashKeys = new Set()) {
       <button class="btn ghost icon x" data-remove="${esc(t.key)}" title="Remove" aria-label="Remove ${esc(t.title)}">×</button>
     </li>`).join("");
 }
+
+const WAIT_STATE = { missing: "Not in Plex", requested: "Downloading", failed: "Download failed" };
+function renderWaiting(pl) {
+  const w = pl.waiting || [];
+  $("waiting").hidden = !w.length;
+  if (!w.length) return;
+  $("waiting-title").textContent = `Waiting for ${plural(w.length, "song")}`;
+  const dl = state.me.can_download;
+  $("download-all").hidden = !dl || !w.some((x) => x.status !== "requested");
+  $("download-all").textContent = `Download all with ${state.me.downloader || ""}`;
+  $("waiting-list").innerHTML = w.map((x) => `
+    <li class="wait ${x.status}">
+      <div style="min-width:0"><div class="t">${esc(x.title)}</div>
+        <div class="a">${esc(x.artist)}${x.album ? " · " + esc(x.album) : ""}</div></div>
+      <span class="wstate" title="${esc(x.note || "")}">${WAIT_STATE[x.status] || esc(x.status)}${x.note && x.status === "failed" ? ": " + esc(x.note) : ""}</span>
+      <span class="cat-acts">
+        ${dl && x.status !== "requested" ? `<button class="btn" data-dl="${x.id}">${x.status === "failed" ? "Retry" : "Download"}</button>` : ""}
+        <button class="btn ghost icon x" data-forget="${x.id}" title="Stop waiting for it" aria-label="Stop waiting for ${esc(x.title)}">×</button>
+      </span>
+    </li>`).join("");
+}
+
+$("waiting-list").addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b || !state.pl) return;
+  b.disabled = true;
+  try {
+    if (b.dataset.dl) {
+      const r = await api(`/api/playlists/${state.pl.id}/waiting/${b.dataset.dl}/download`, { method: "POST" });
+      toast(esc(r.note));
+    } else if (b.dataset.forget) {
+      await api(`/api/playlists/${state.pl.id}/waiting/${b.dataset.forget}`, { method: "DELETE" });
+    }
+  } catch (_) {}
+  loadPlaylist();
+});
+$("download-all").onclick = async () => {
+  if (!confirm(`Ask ${state.me.downloader} to download ${plural(state.pl.waiting.filter((x) => x.status !== "requested").length, "song")}?`)) return;
+  $("download-all").disabled = true;
+  try {
+    const r = await api(`/api/playlists/${state.pl.id}/waiting/download-all`, { method: "POST" });
+    toast(`Sent ${plural(r.sent, "song")} to ${esc(state.me.downloader)}${r.failed ? `; ${r.failed} couldn't be found` : ""}.`);
+  } catch (_) {}
+  $("download-all").disabled = false;
+  loadPlaylist();
+};
+$("check-waiting").onclick = async () => {
+  $("check-waiting").disabled = true;
+  try {
+    const r = await api(`/api/playlists/${state.pl.id}/waiting/check`, { method: "POST" });
+    toast(r.added ? `${plural(r.added, "song")} found in Plex and added` : "None of them are in Plex yet.");
+  } catch (_) {}
+  $("check-waiting").disabled = false;
+  loadPlaylist();
+};
+
+/* ---------------- importing from Spotify / Apple Music / Deezer ---------------- */
+
+$("show-ext").onclick = () => {
+  $("ext-box").hidden = !$("ext-box").hidden;
+  if (!$("ext-box").hidden) $("ext-url").focus();
+};
+let extJob = null;
+$("ext-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const url = $("ext-url").value.trim();
+  if (!url) return;
+  $("ext-result").hidden = true;
+  $("ext-go").disabled = true;
+  $("ext-status").textContent = "Reading the playlist…";
+  try {
+    extJob = (await api("/api/import", { method: "POST", body: { url } })).job;
+    pollImport(extJob);
+  } catch (err) {
+    $("ext-status").textContent = err.message;
+    $("ext-go").disabled = false;
+  }
+};
+async function pollImport(job) {
+  let j;
+  try { j = await api(`/api/import/${job}`); }
+  catch (err) { $("ext-status").textContent = err.message; $("ext-go").disabled = false; return; }
+  if (job !== extJob) return;
+  if (j.state === "running") {
+    $("ext-status").textContent = j.total ? `Looking for the songs in your Plex… ${j.done} of ${j.total}` : "Reading the playlist…";
+    return setTimeout(() => pollImport(job), 700);
+  }
+  $("ext-go").disabled = false;
+  if (j.state === "error") { $("ext-status").textContent = j.error; return; }
+  const r = j.result, found = r.items.filter((i) => i.match).length, missing = r.items.filter((i) => !i.match);
+  $("ext-status").textContent = r.note || "";
+  $("ext-name").value = r.name;
+  $("ext-summary").textContent = `${r.source}: ${found} of ${plural(r.items.length, "song")} are in your Plex.` +
+    (missing.length ? " Not found:" : "");
+  $("ext-missing").innerHTML = missing.map((i) => `<div class="mini"><b>${esc(i.title)}</b> · ${esc(i.artist)}</div>`).join("");
+  $("ext-missing").hidden = !missing.length;
+  $("ext-keep").parentElement.hidden = !missing.length;
+  $("ext-keep-label").textContent = `Keep the ${plural(missing.length, "missing song")} waiting` +
+    (state.me.can_download ? ` (you can then download them with ${state.me.downloader})` : " (added when they show up in Plex)");
+  $("ext-result").hidden = false;
+}
+$("ext-create").onclick = async () => {
+  $("ext-create").disabled = true;
+  try {
+    const r = await api(`/api/import/${extJob}/create`, {
+      method: "POST", body: { name: $("ext-name").value, keep_missing: $("ext-keep").checked },
+    });
+    toast(`Created with ${plural(r.added, "song")}${r.waiting ? `, ${r.waiting} waiting` : ""}. Now pick who it's for.`);
+    $("ext-box").hidden = true;
+    $("ext-result").hidden = true;
+    $("ext-url").value = "";
+    $("ext-status").textContent = "";
+    extJob = null;
+    openNew(r.id);
+  } catch (_) {}
+  $("ext-create").disabled = false;
+};
 
 $("pl-list").addEventListener("click", (e) => {
   const a = e.target.closest(".pl-item");
@@ -167,6 +285,7 @@ $("new-pl").onclick = () => {
   $("new-box").hidden = !$("new-box").hidden;
   $("import-box").hidden = true;
   $("leftover-box").hidden = true;
+  $("ext-box").hidden = true;
   if (!$("new-box").hidden) $("new-name").focus();
 };
 async function openNew(id) {
@@ -478,13 +597,49 @@ function renderResults(res) {
           : `<button class="btn icon" data-track="${esc(t.key)}" title="Add" aria-label="Add ${esc(t.title)}">+</button>`}
       </div>`).join("");
   }
-  $("results").innerHTML = html || `<div class="none">Nothing found.</div>`;
+  html = html || `<div class="none">Nothing in your Plex.</div>`;
+  html += `<div class="catalog-wrap"><button class="link-btn" data-catalog="1">Not in Plex? Search Deezer for it…</button></div>`;
+  $("results").innerHTML = html;
   $("results").hidden = false;
+}
+
+async function searchCatalog(wrap) {
+  const q = $("search").value.trim();
+  wrap.innerHTML = `<div class="none">Searching Deezer…</div>`;
+  let res;
+  try { res = await api(`/api/catalog?q=${encodeURIComponent(q)}`); }
+  catch (_) { wrap.innerHTML = `<div class="none">Couldn't search Deezer.</div>`; return; }
+  state.catalog = res;
+  const dl = state.me.can_download;
+  wrap.innerHTML = `<h3>From Deezer (not necessarily in Plex)</h3>` + (res.length ? res.map((t, i) => `
+    <div class="row result cat">
+      <span class="art blank">♫</span>
+      <div style="min-width:0"><div class="t">${esc(t.title)}</div><div class="a">${esc(t.artist)} · ${esc(t.album)}</div></div>
+      <span class="dur">${dur(t.duration)}</span>
+      <span class="cat-acts">
+        ${dl ? `<button class="btn" data-get="${i}" title="Download it with ${esc(state.me.downloader)}, and add it to this playlist when it's in Plex">Get</button>` : ""}
+        <button class="btn icon" data-want="${i}" title="Add it (now if it's in Plex, otherwise when it shows up)" aria-label="Add ${esc(t.title)}">+</button>
+      </span>
+    </div>`).join("") : `<div class="none">Deezer doesn't have it either.</div>`);
 }
 
 $("results").addEventListener("click", async (e) => {
   const b = e.target.closest("button");
   if (!b || !state.pl) return;
+  if (b.dataset.catalog) { e.stopPropagation(); return searchCatalog(b.parentElement); }
+  if (b.dataset.want || b.dataset.get) {
+    const t = state.catalog[Number(b.dataset.want || b.dataset.get)];
+    b.disabled = true;
+    try {
+      const r = await api(`/api/playlists/${state.pl.id}/want`, { method: "POST", body: { ...t, download: !!b.dataset.get } });
+      toast(r.added ? `Added “${esc(t.title)}”: it was already in Plex`
+        : r.download ? `${esc(r.download.note)}. It'll be added when it's in Plex.`
+        : `“${esc(t.title)}” isn't in Plex yet. It'll be added when it shows up.`);
+      b.closest(".cat-acts").innerHTML = `<span class="in">✓</span>`;
+      loadPlaylist();
+    } catch (_) { b.disabled = false; }
+    return;
+  }
   b.disabled = true;
   if (b.dataset.track) {
     await api(`/api/playlists/${state.pl.id}/tracks`, { method: "POST", body: { keys: [b.dataset.track] } });

@@ -207,6 +207,48 @@ see your own music playlists from Plex. Pick one, then choose who it's for.
 
 Anyone signed in can do this with their own playlists.
 
+## Importing from Spotify, Apple Music or Deezer
+
+**+** > **…or import from Spotify, Apple Music or Deezer**, paste a link to a public
+playlist, and **Look up**. Jukebox finds each song in your Plex library (allowing for small
+differences like "feat. …" or "Remastered") and shows how many it found. Give it a name and
+**Create shared playlist**, then pick who it's for.
+
+- **Songs that aren't in your Plex** can be kept as **waiting**. They're listed under the
+  playlist and added in their place automatically once they show up in Plex. Jukebox looks
+  for them every 10 minutes, or press **Check Plex now**.
+- **Spotify** shows only the first 100 songs of a playlist to apps without a key. For the
+  full list, create a free app at <https://developer.spotify.com/dashboard> and set
+  `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. Spotify's own editorial playlists
+  ("Today's Top Hits") can't be read by apps at all, so those stop at 100.
+- **Apple Music** pages show the first 100 songs. **Deezer** gives the whole playlist.
+- Only public playlists can be read.
+
+You can also add a song that isn't in Plex while searching: at the bottom of the search
+results, **Not in Plex? Search Deezer for it…**. **+** adds it (straight away if it's
+actually in Plex, otherwise as waiting); **Get** also downloads it.
+
+## Downloading songs that aren't in Plex
+
+Connect **deemix** or **Lidarr**, and waiting songs get a **Download** button (and
+**Download all**). Once the files land in your music library and Plex has scanned them, the
+songs are added to the playlist by themselves.
+
+- **deemix** downloads the exact song from Deezer. Set `DEEMIX_URL` (e.g.
+  `http://192.168.1.30:6595`) and `DEEMIX_ARL`: your Deezer `arl` cookie (sign in at
+  deezer.com, then browser developer tools > Application/Storage > Cookies > `arl`). It needs
+  a Deezer account; downloading in lossless needs a paid one.
+- **Lidarr** works in albums: it adds the song's whole album (and its artist, without
+  following the artist's other albums) and searches your indexers. Set `LIDARR_URL` and
+  `LIDARR_API_KEY` (Lidarr > Settings > General). It uses Lidarr's first root folder and
+  profiles unless you name others with `LIDARR_ROOT_FOLDER`, `LIDARR_QUALITY_PROFILE`,
+  `LIDARR_METADATA_PROFILE`.
+- **Who can download:** `DOWNLOADS=owner` (the default) lets only you; `everyone` lets
+  anyone in a playlist; `off` hides it.
+- deemix or Lidarr must save into a folder that Plex has as a music library, and Plex needs
+  to scan it (turn on **Settings > Library > Scan my library automatically**).
+- These keys stay on the server. They never reach the web page.
+
 ## Who sees what
 
 **Each playlist has its own list of people.** A new playlist starts with just you, and the
@@ -259,7 +301,8 @@ a proxy, set `PUBLIC_URL` in `.env` to the outside address.
 
 ## Files
 
-- `.env`: your settings (Docker). `config.toml` without Docker.
+- `.env`: your settings (Docker). `config.toml` without Docker. Keep it private: it holds
+  your Plex token, and any Spotify, deemix or Lidarr keys.
 - In the `jukebox-data` volume (or the `data` folder without Docker):
   - `jukebox.db`: the shared playlists. Back this file up.
   - `session.key`, `client.id`: created automatically.

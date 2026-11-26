@@ -91,6 +91,35 @@ class AppSecurityTest(unittest.TestCase):
         self.assertIsNone(self.db.get_playlist(pid2))
         self.assertEqual(owner.delete(f"/api/others/{pid2}").status_code, 404)
 
+    def test_import_and_download_endpoints_are_protected(self):
+        c = self.client()
+        self.assertEqual(c.get("/api/catalog?q=abc").status_code, 401)
+        self.assertEqual(c.post("/api/import", json={"url": "https://open.spotify.com/playlist/abcdefghij"}).status_code, 401)
+        sam, riley = self.client("2"), self.client("3")
+        self.assertEqual(sam.post("/api/import", json={"url": "http://169.254.169.254/latest"}).status_code, 400)
+        pid = sam.post("/api/playlists", json={"name": "x"}).json()["id"]
+        r = sam.post(f"/api/playlists/{pid}/want",
+                     json={"title": "Not Here", "artist": "Nobody", "link": "http://evil.example/track/1"})
+        self.assertEqual(r.json(), {"added": False, "waiting": True})
+        w = self.db.wanted_for(pid)[0]
+        self.assertIsNone(w["link"])  # only real Deezer track links are kept (they go to deemix)
+        # Not in the playlist: can't see, download or remove its waiting songs.
+        self.assertEqual(riley.post(f"/api/playlists/{pid}/waiting/{w['id']}/download").status_code, 404)
+        self.assertEqual(riley.delete(f"/api/playlists/{pid}/waiting/{w['id']}").status_code, 404)
+        # In it, but downloads are owner-only by default (and none is set up here).
+        self.assertEqual(sam.post(f"/api/playlists/{pid}/waiting/{w['id']}/download").status_code, 403)
+        self.assertEqual(sam.post(f"/api/playlists/{pid}/waiting/download-all").status_code, 403)
+        me = sam.get("/api/me").json()
+        self.assertFalse(me["can_download"])
+        self.assertEqual(sam.get(f"/api/playlists/{pid}").json()["waiting"][0]["title"], "Not Here")
+        self.assertEqual(sam.delete(f"/api/playlists/{pid}/waiting/{w['id']}").status_code, 200)
+
+    def test_secrets_never_reach_the_browser(self):
+        self.app_cfg_secret_check = True
+        c = self.client("1")
+        for path in ("/api/config", "/api/me", "/api/status"):
+            self.assertNotIn("x" * 64, c.get(path).text, path)
+
     def test_bad_keys_never_reach_plex(self):
         c = self.client("2")
         self.assertEqual(c.get("/api/thumb/..%2F..%2Faccounts").status_code, 404)

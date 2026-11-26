@@ -39,6 +39,21 @@
           <input id="new-name" placeholder="New playlist name" maxlength="120" autocomplete="off">
           <button class="btn primary">Create</button>
         </form>
+        <button type="button" id="show-ext" class="link-btn">…or import from Spotify, Apple Music or Deezer</button>
+        <div id="ext-box" class="import-box" hidden>
+          <form id="ext-form" class="new-form">
+            <input id="ext-url" placeholder="Paste a playlist link" autocomplete="off" inputmode="url">
+            <button class="btn primary" id="ext-go">Look up</button>
+          </form>
+          <p id="ext-status" class="hint"></p>
+          <div id="ext-result" hidden>
+            <input id="ext-name" maxlength="120" autocomplete="off" aria-label="Playlist name">
+            <p id="ext-summary" class="hint"></p>
+            <div id="ext-missing" class="import-list ext-missing"></div>
+            <label class="keep"><input type="checkbox" id="ext-keep" checked> <span id="ext-keep-label"></span></label>
+            <button class="btn primary ext-create" id="ext-create">Create shared playlist</button>
+          </div>
+        </div>
         <button type="button" id="show-import" class="link-btn">…or share one of your Plex playlists</button>
         <div id="import-box" class="import-box" hidden>
           <label class="keep"><input type="checkbox" id="keep-original"> Keep my original as well</label>
@@ -93,6 +108,20 @@
 
         <ol id="tracks" class="tracks"></ol>
         <p id="no-tracks" class="muted no-tracks" hidden>Nothing here yet. Search above to add songs.</p>
+
+        <section id="waiting" class="waiting" hidden>
+          <div class="waiting-head">
+            <div>
+              <h3 id="waiting-title"></h3>
+              <p class="hint">Not in Plex yet. Each one is added to the playlist automatically when it shows up in Plex.</p>
+            </div>
+            <div class="waiting-acts">
+              <button id="check-waiting" class="btn ghost">Check Plex now</button>
+              <button id="download-all" class="btn" hidden>Download all</button>
+            </div>
+          </div>
+          <ol id="waiting-list" class="waiting-list"></ol>
+        </section>
       </section>
     </main>
   </div>

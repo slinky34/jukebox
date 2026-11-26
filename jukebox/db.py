@@ -47,6 +47,23 @@ CREATE TABLE IF NOT EXISTS playlist_members(
   added_at    REAL,
   PRIMARY KEY(playlist_id, member_id)
 );
+-- Songs a playlist should have that aren't in Plex yet (from an import, or requested to
+-- download). Checked against the library now and then; added to the playlist on arrival.
+CREATE TABLE IF NOT EXISTS wanted(
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  artist      TEXT NOT NULL DEFAULT '',
+  album       TEXT NOT NULL DEFAULT '',
+  duration    INTEGER NOT NULL DEFAULT 0,
+  link        TEXT,              -- e.g. the Deezer track page, for deemix
+  after_key   TEXT,              -- goes after this track when it arrives
+  status      TEXT NOT NULL DEFAULT 'missing',  -- missing | requested | failed
+  note        TEXT,
+  added_by    TEXT NOT NULL,
+  added_at    REAL NOT NULL,
+  checked_at  REAL
+);
 -- Plex copies that must be deleted (their shared playlist was deleted).
 CREATE TABLE IF NOT EXISTS mirror_deletes(
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +115,8 @@ class DB:
             f"""SELECT p.id, p.name, p.created_by, p.updated_at,
                       COUNT(i.track_key) AS count, COALESCE(SUM(i.duration), 0) AS duration,
                       (SELECT track_key FROM items WHERE playlist_id = p.id ORDER BY pos LIMIT 1) AS first_key,
-                      (SELECT COUNT(*) FROM playlist_members WHERE playlist_id = p.id) AS people
+                      (SELECT COUNT(*) FROM playlist_members WHERE playlist_id = p.id) AS people,
+                      (SELECT COUNT(*) FROM wanted WHERE playlist_id = p.id) AS waiting
                FROM playlists p LEFT JOIN items i ON i.playlist_id = p.id
                {where}
                GROUP BY p.id ORDER BY p.name COLLATE NOCASE""",
@@ -209,6 +227,40 @@ class DB:
             order = keys[:at] + [t["key"] for t in new] + keys[at:]
             self._renumber(c, pid, order)
             return new
+
+    # ---- wanted (not in Plex yet) --------------------------------------------
+
+    def add_wanted(self, pid: int, items: list, who: str) -> int:
+        now = time.time()
+        with self.tx() as c:
+            for w in items:
+                c.execute(
+                    """INSERT INTO wanted(playlist_id, title, artist, album, duration, link, after_key,
+                                          added_by, added_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (pid, w["title"][:300], (w.get("artist") or "")[:300], (w.get("album") or "")[:300],
+                     int(w.get("duration") or 0), w.get("link"), w.get("after_key"), who, now))
+        return len(items)
+
+    def wanted_for(self, pid: int):
+        return self._all("SELECT * FROM wanted WHERE playlist_id=? ORDER BY id", (pid,))
+
+    def all_wanted(self):
+        return self._all("SELECT * FROM wanted ORDER BY checked_at IS NOT NULL, checked_at, id")
+
+    def get_wanted(self, wid: int):
+        return self._one("SELECT * FROM wanted WHERE id=?", (wid,))
+
+    def set_wanted(self, wid: int, **fields):
+        allowed = {"status", "note", "link", "album", "checked_at"}
+        cols = [k for k in fields if k in allowed]
+        if cols:
+            with self.tx() as c:
+                c.execute(f"UPDATE wanted SET {', '.join(k + '=?' for k in cols)} WHERE id=?",
+                          [fields[k] for k in cols] + [wid])
+
+    def delete_wanted(self, wid: int) -> bool:
+        with self.tx() as c:
+            return c.execute("DELETE FROM wanted WHERE id=?", (wid,)).rowcount > 0
 
     def remove_tracks(self, pid: int, keys: list) -> int:
         with self.tx() as c:

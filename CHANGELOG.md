@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 - 2026-11-25
+
+- **Import playlists from Spotify, Apple Music and Deezer.** Paste a public playlist link;
+  Jukebox finds the songs in your Plex library and makes a shared playlist from them.
+  Spotify needs a free app key for playlists over 100 songs.
+- **Waiting songs.** Songs not in your Plex yet stay listed under the playlist and are
+  added in their place as soon as they appear in Plex (checked every 10 minutes, or
+  **Check Plex now**).
+- **Download missing songs with deemix or Lidarr.** **Download** / **Download all** on
+  waiting songs. Only the server owner by default (`DOWNLOADS=everyone` to let others).
+- **Search Deezer** from the song search for things that aren't in Plex, and add or
+  download them.
+- Security: pasted links are only used to read the playlist from Spotify, Apple Music or
+  Deezer themselves; deemix and Lidarr keys stay on the server; only real Deezer track
+  links are passed to deemix.
+
 ## 0.2.0 - 2026-11-25
 
 - **Clean up 👥 playlists (server owner).** Under **+ > …or clean up 👥 playlists**:

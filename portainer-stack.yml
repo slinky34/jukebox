@@ -18,6 +18,17 @@ services:
       ALLOWED_USERS: ${ALLOWED_USERS:-}
       POLL_SECONDS: ${POLL_SECONDS:-20}
       PULL_FROM_PLEX: ${PULL_FROM_PLEX:-true}
+      # Optional: importing from Spotify (full playlists), and downloading missing songs.
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      DOWNLOADS: ${DOWNLOADS:-owner}
+      DEEMIX_URL: ${DEEMIX_URL:-}
+      DEEMIX_ARL: ${DEEMIX_ARL:-}
+      LIDARR_URL: ${LIDARR_URL:-}
+      LIDARR_API_KEY: ${LIDARR_API_KEY:-}
+      LIDARR_ROOT_FOLDER: ${LIDARR_ROOT_FOLDER:-}
+      LIDARR_QUALITY_PROFILE: ${LIDARR_QUALITY_PROFILE:-}
+      LIDARR_METADATA_PROFILE: ${LIDARR_METADATA_PROFILE:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
