@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 - 2026-11-25
+
+- **Import has its own button.** **Import** next to **+** at the top of the playlist list
+  opens the Spotify / Apple Music / Deezer import; it's also on the empty page.
+
 ## 0.3.1 - 2026-11-25
 
 - **Edits made in Plex or Plexamp reach everyone faster:** Jukebox now checks every

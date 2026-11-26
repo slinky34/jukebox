@@ -32,15 +32,15 @@
     <aside class="sidebar">
       <div class="sidebar-head">
         <h2>Shared playlists</h2>
-        <button id="new-pl" class="btn icon" title="New playlist" aria-label="New playlist">+</button>
+        <div class="head-acts">
+          <button id="import-pl" class="btn sm" title="Import from Spotify, Apple Music or Deezer">Import</button>
+          <button id="new-pl" class="btn icon" title="New playlist" aria-label="New playlist">+</button>
+        </div>
       </div>
-      <div id="new-box" class="new-box" hidden>
-        <form id="new-form" class="new-form">
-          <input id="new-name" placeholder="New playlist name" maxlength="120" autocomplete="off">
-          <button class="btn primary">Create</button>
-        </form>
-        <button type="button" id="show-ext" class="link-btn">…or import from Spotify, Apple Music or Deezer</button>
-        <div id="ext-box" class="import-box" hidden>
+      <div id="ext-box" class="import-box import-panel" hidden>
+          <div class="panel-title">Import a playlist</div>
+          <p class="hint">Paste a link to a public Spotify, Apple Music or Deezer playlist. Jukebox
+            finds the songs in your Plex and makes a shared playlist from them.</p>
           <form id="ext-form" class="new-form">
             <input id="ext-url" placeholder="Paste a playlist link" autocomplete="off" inputmode="url">
             <button class="btn primary" id="ext-go">Look up</button>
@@ -54,6 +54,11 @@
             <button class="btn primary ext-create" id="ext-create">Create shared playlist</button>
           </div>
         </div>
+      <div id="new-box" class="new-box" hidden>
+        <form id="new-form" class="new-form">
+          <input id="new-name" placeholder="New playlist name" maxlength="120" autocomplete="off">
+          <button class="btn primary">Create</button>
+        </form>
         <button type="button" id="show-import" class="link-btn">…or share one of your Plex playlists</button>
         <div id="import-box" class="import-box" hidden>
           <label class="keep"><input type="checkbox" id="keep-original"> Keep my original as well</label>
@@ -81,7 +86,10 @@
         <div class="empty-art">♫</div>
         <h2>No shared playlists yet</h2>
         <p class="muted">Make one, pick who it's for, and it shows up in each of their Plex apps.</p>
-        <button id="empty-new" class="btn primary">New playlist</button>
+        <div class="empty-acts">
+          <button id="empty-new" class="btn primary">New playlist</button>
+          <button id="empty-import" class="btn">Import from Spotify, Apple Music or Deezer</button>
+        </div>
       </div>
 
       <section id="playlist" hidden>

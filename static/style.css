@@ -282,3 +282,10 @@ button.chip.add:hover { border-color: var(--accent); }
 .wait.requested .wstate { color: var(--accent); }
 .wait.failed .wstate { color: var(--bad); }
 @media (max-width: 700px) { .wstate { display: none; } }
+
+.head-acts { display: flex; align-items: center; gap: 6px; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13.5px; }
+.import-panel { margin: 0 4px 12px; }
+.panel-title { font-weight: 700; font-size: 14.5px; }
+.import-panel .hint { margin: 4px 0 10px; }
+.empty-acts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }

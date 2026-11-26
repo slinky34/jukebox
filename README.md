@@ -209,7 +209,7 @@ Anyone signed in can do this with their own playlists.
 
 ## Importing from Spotify, Apple Music or Deezer
 
-**+** > **…or import from Spotify, Apple Music or Deezer**, paste a link to a public
+Click **Import** (next to **+**), paste a link to a public
 playlist, and **Look up**. Jukebox finds each song in your Plex library (allowing for small
 differences like "feat. …" or "Remastered") and shows how many it found. Give it a name and
 **Create shared playlist**, then pick who it's for.

@@ -211,10 +211,12 @@ $("check-waiting").onclick = async () => {
 
 /* ---------------- importing from Spotify / Apple Music / Deezer ---------------- */
 
-$("show-ext").onclick = () => {
+$("import-pl").onclick = () => {
   $("ext-box").hidden = !$("ext-box").hidden;
+  $("new-box").hidden = true;
   if (!$("ext-box").hidden) $("ext-url").focus();
 };
+$("empty-import").onclick = () => { $("ext-box").hidden = true; $("import-pl").click(); };
 let extJob = null;
 $("ext-form").onsubmit = async (e) => {
   e.preventDefault();
