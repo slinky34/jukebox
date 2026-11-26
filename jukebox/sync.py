@@ -25,7 +25,7 @@ FAILED = object()  # marks a Plex copy we couldn't read this cycle
 class SyncEngine:
     def __init__(self, db, backend, cfg, notify=lambda msg: None):
         self.db, self.backend, self.notify = db, backend, notify
-        self.poll = max(5, int(cfg.get("poll_seconds", 20)))
+        self.poll = max(5, int(cfg.get("poll_seconds", 10)))
         self.pull_enabled = bool(cfg.get("pull_from_plex", True))
         self.prefix = cfg.get("playlist_prefix", "")
         self._wake, self._stop = threading.Event(), threading.Event()

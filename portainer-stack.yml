@@ -16,7 +16,7 @@ services:
       PLEX_URL: ${PLEX_URL:-http://host.docker.internal:32400}
       PUBLIC_URL: ${PUBLIC_URL:-}
       ALLOWED_USERS: ${ALLOWED_USERS:-}
-      POLL_SECONDS: ${POLL_SECONDS:-20}
+      POLL_SECONDS: ${POLL_SECONDS:-10}
       PULL_FROM_PLEX: ${PULL_FROM_PLEX:-true}
       # Optional: importing from Spotify (full playlists), and downloading missing songs.
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}

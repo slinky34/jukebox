@@ -35,7 +35,7 @@ DEFAULTS = {
     "port": 8765,
     "public_url": "",
     "playlist_prefix": "👥 ",
-    "poll_seconds": 20,
+    "poll_seconds": 10,
     "pull_from_plex": True,
     "allowed_users": [],
     # Importing from Spotify (optional keys: without them, only the first 100 songs).

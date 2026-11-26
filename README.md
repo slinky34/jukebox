@@ -11,7 +11,7 @@ There are two ways to edit:
   Everyone with the page open sees the change straight away, and their Plex copies follow
   within a second or two.
 - **In Plex or Plexamp.** Songs added to or removed from your `👥` copy are picked up on the
-  next check (every 20 seconds by default) and passed on to everyone. A song added in
+  next check (every 10 seconds by default) and passed on to everyone. A song added in
   Plex keeps the spot it was added at.
 
 It runs in Docker next to Plex. Your playlists are kept in a Docker volume, so updating

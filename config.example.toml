@@ -19,7 +19,7 @@ public_url = ""
 playlist_prefix = "👥 "
 
 # How often (seconds) to check everyone's Plex copies for edits made in Plex/Plexamp.
-poll_seconds = 20
+poll_seconds = 10
 
 # true:  adding/removing songs inside Plex or Plexamp counts as an edit for everyone.
 # false: only the web app edits; changes made inside Plex get undone on the next check.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 - 2026-11-25
+
+- **Edits made in Plex or Plexamp reach everyone faster:** Jukebox now checks every
+  10 seconds instead of 20. Set `POLL_SECONDS` to change it (5 is the lowest).
+
 ## 0.3.0 - 2026-11-25
 
 - **Import playlists from Spotify, Apple Music and Deezer.** Paste a public playlist link;
