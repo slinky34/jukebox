@@ -1,0 +1,14 @@
+.venv
+.env
+.env.*
+data
+data-*
+config.toml
+config.toml.txt
+*.log
+**/__pycache__
+.claude
+tests
+windows
+*.bat
+start.sh

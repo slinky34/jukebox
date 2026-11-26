@@ -1,0 +1,28 @@
+# Jukebox: shared Plex music playlists.
+#   First time:  copy .env.example to .env, fill in PLEX_TOKEN, then  docker compose up -d
+#   Update:      docker compose pull && docker compose up -d
+# Your playlists live in the "jukebox-data" volume, which updates never touch.
+services:
+  jukebox:
+    image: ghcr.io/slinky34/jukebox:latest
+    # build: .    # use this instead of image: to build from this folder
+    container_name: jukebox
+    restart: unless-stopped
+    ports:
+      - "${JUKEBOX_PORT:-8765}:8765"
+    env_file: .env
+    environment:
+      # Plex running on the same machine as Docker. Change it in .env if Plex is elsewhere.
+      PLEX_URL: ${PLEX_URL:-http://host.docker.internal:32400}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets Linux reach the host like Docker Desktop does
+    volumes:
+      - jukebox-data:/data
+    logging:
+      driver: local
+      options:
+        max-size: "5m"
+
+volumes:
+  jukebox-data:
+    name: jukebox-data

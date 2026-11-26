@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+plexapi>=4.15
+requests>=2.31
+itsdangerous>=2.1
+tomli>=2.0; python_version < "3.11"
